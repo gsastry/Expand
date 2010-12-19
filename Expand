@@ -1,0 +1,73 @@
+#!/usr/bin/python
+
+# Expand.py
+#
+# Python script for shell environment variable expansion
+#
+# Girish Sastry
+# 2010-10-16
+
+import sys
+import os
+import re
+import string
+
+def expand (s):
+    r = re.compile (r"""
+		(?P<ESC>(?<!\\)(\\\\)*)
+		[$]					    # Dollar sign
+		((?P<NAME1>[A-Za-z_][\w]*)      |   	    # $NAME1
+		(\{(?P<NAME2>[A-Za-z_][\w]*)\}) |   	    # ${NAME2}
+		(\{(?P<NAME3>[A-Za-z_][\w]*)
+		    =(?P<WORD>(\\.|[^\\\}]|\}(?=\}))*)\}) | # ${NAME3=WORD}
+		(?P<NUM>[0-9]))				    # $N
+		""", re.X)
+    e = re.compile (r"""(?<!\\)(\\\\)*			    # Error escape
+		    [$]					    #   sequence
+		    \{""", re.X)
+
+    while (r.search (s)):
+	num = ''
+	repl = '' 
+	word = '' 
+	name = ''
+	m = r.search (s)
+	if (m.group ("NAME1")):				
+	    name = m.group ("NAME1")			    # $NAME
+	elif (m.group ("NAME2")):    
+	    name = m.group ("NAME2")			    # ${NAME}
+	elif (m.group ("NAME3")):
+	    name = m.group ("NAME3")			    # #{NAME=
+	    if (m.group ("WORD")):			    #    WORD}
+		word = expand (m.group ("WORD"))	    # (If word
+	elif (m.group ("NUM")):				    #	exists)
+	    num = int (m.group ("NUM"))
+	if (num):					    # $N
+	    if (num < len (sys.argv)):
+		repl = sys.argv[num]
+	elif (name in os.environ.keys()):
+	    repl = os.environ[name]
+	else:
+	    repl = word
+	    backslashre = re.compile (r"([^\\])(\})+")	    # Fix nested
+	    wordEnv = backslashre.sub (r"\1", word)	    #  WORD cases
+	    if (repl):
+		os.environ[name] = wordEnv
+	repl = m.group ("ESC") + repl			    # Prepend ESC
+	repl = repl.replace ('\\', '\\\\')		    # Not raw, so
+	s = r.sub (repl, s, 1)			    	    #  double \s
+    if (not (r.search (s)) and e.search (s)):		    
+	    sys.stderr.write ("Invalid expansion\n")	    # Error case
+	    return -1 
+    return s
+	
+if __name__ == "__main__":
+    while True:
+	try:
+	    line = raw_input ("% ").rstrip ()
+	    if (line):
+		line = expand (line)
+		if (line != -1):
+		    print ">> " + line
+	except EOFError:
+	    break
